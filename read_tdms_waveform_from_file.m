@@ -73,28 +73,16 @@ tdms = TDMS_readTDMSFile(waveform_file_path, ...
 interleaved_iq = tdms.data{3};
 clear tdms % free up some space
 
-% build burst mask
-waveform_burst_mask = false(1, waveform_sample_count);
-for i = 1:length(waveform_burst_start_locations)
-    waveform_burst_mask(waveform_burst_start_locations(i): ...
-        waveform_burst_stop_locations(i)) = true;
-end
-subset_burst_mask = waveform_burst_mask(subset_start_sample:subset_stop_sample);
-clear i waveform_burst_mask
-
 % compose subset waveform from interleaved iq
-subset_real = single(interleaved_iq(1:2:end));
-subset_imaginary = single(interleaved_iq(2:2:end));
-subset_y = subset_real + 1j * subset_imaginary;
-subset_sample_count = length(subset_real);
+subset_y = single(interleaved_iq(1:2:end)) + ...
+    1j * single(interleaved_iq(2:2:end));
+subset_sample_count = length(subset_y);
 subset_length = subset_sample_count * waveform_dt;
 clear interleaved_iq % free up some space
 
 % scale subset
 if scale_subset
     subset_y = subset_y / max(subset_y);
-    subset_real = real(subset_y);
-    subset_imaginary = imag(subset_y);
 end
 
 % save the waveform to a .mat file
@@ -105,6 +93,8 @@ save(file_name, '-v7.3')
 % print some statistics
 fprintf('Waveform Length (s): %.3f\n', waveform_length);
 fprintf('Subset Length (s): %.3f\n', subset_length);
+subset_real = real(subset_y);
+subset_imaginary = imag(subset_y);
 if exist('waveform_papr', 'var')
     simulated_rms_power = 10 * log10(mean(...
         subset_real(subset_burst_mask).^2 + ...
