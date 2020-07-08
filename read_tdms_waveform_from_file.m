@@ -1,74 +1,122 @@
-complex_waveform.file_path = 'NR_DL_FR2_100M_120k_256QAM.tdms';
+clear
 
-% read tdms data from file
-tdms_waveform = TDMS_readTDMSFile(complex_waveform.file_path);
-interleaved_iq = tdms_waveform.data{3};
-channel_property_names = tdms_waveform.propNames{3};
-channel_property_values = tdms_waveform.propValues{3};
-clear tdms_waveform % free up some space
-
-% compose complex waveform from interleaved iq
-complex_waveform.real = interleaved_iq(1:2:end);
-complex_waveform.imaginary = interleaved_iq(2:2:end);
-complex_waveform.iq = complex_waveform.real + 1i .* complex_waveform.imaginary;
-complex_waveform.sample_count = length(complex_waveform.iq);
-clear interleaved_iq % free up some space
+% user variables
+waveform_file_path = 'LTE_TDD_10.tdms';
+% waveform_file_path = 'C:\Users\semoore\Downloads\stream03.tdms';
+subset_offset = 0; % offset from start of the waveform in seconds
+subset_length = -1; % length of waveform to load in seconds, -1 is all
+default_iq_rate = 125e6; % sample rate to use if one isn't found in the tdms file
+scale_subset = true; % if true, scales the subset to have peak power of 0dB
 
 % scan and fill metadata
-complex_waveform.burst_start_locations = 1;
-complex_waveform.burst_stop_locations = complex_waveform.sample_count;
+tdms = TDMS_readTDMSFile(waveform_file_path, 'GET_DATA_OPTION', 'getnone');
+channel_property_names = tdms.propNames{3};
+channel_property_values = tdms.propValues{3};
+waveform_sample_count = tdms.numberDataPointsRaw(3) / 2; % interleaved iq
+waveform_burst_start_locations = 1;
+waveform_burst_stop_locations = waveform_sample_count;
 for i = 1:length(channel_property_names)
     property_name = channel_property_names{i};
     property_value = channel_property_values{i};
     switch property_name
+        case 't0'
+            waveform_t0 = property_value;
         case 'dt'
-            complex_waveform.dt = property_value;
+            waveform_dt = property_value;
         case 'NI_RF_IQRate'
-            complex_waveform.fs = property_value;
+            waveform_fs = property_value;
         case 'NI_RF_PAPR'
-            complex_waveform.papr = property_value;
+            waveform_papr = property_value;
         case 'NI_RF_SignalBandwidth'
-            complex_waveform.bandwidth = property_value;
+            waveform_bandwidth = property_value;
         case {'NI_RF_Burst_Start_Locations', 'NI_RF_Burst_Stop_Locations'}
             burst_locations = strtrim(property_value);
             burst_locations = strsplit(burst_locations, '\t');
             if strcmp(property_name, 'NI_RF_Burst_Start_Locations')
-                property_name = 'burst_start_locations';
+                property_name = 'waveform_burst_start_locations';
             elseif strcmp(property_name, 'NI_RF_Burst_Stop_Locations')
-                property_name = 'burst_stop_locations';
+                property_name = 'waveform_burst_stop_locations';
             end
             for j = 1:length(burst_locations)
-                complex_waveform.(property_name)(j) = str2double(burst_locations{j}) + 1; % matlab indexes start at 1
+                eval([property_name, '(j) = ', burst_locations{j}, ' + 1;']); % matlab indexes start at 1
             end
+            clear burst_locations j
     end
 end
 clear channel_property_names channel_property_values property_name property_value
 
-% build burst mask
-complex_waveform.burst_mask = false(1, complex_waveform.sample_count);
-for i = 1:length(complex_waveform.burst_start_locations)
-    burst_start_location = complex_waveform.burst_start_locations(i);
-    burst_stop_location = complex_waveform.burst_stop_locations(i);
-    complex_waveform.burst_mask(burst_start_location:burst_stop_location) = true;
+% fill sample rate with default value if not found in metadata
+if ~exist('waveform_fs', 'var')
+    if exist('waveform_dt', 'var')
+        waveform_fs = 1 / waveform_dt;
+    else
+        waveform_fs = default_iq_rate;
+    end
 end
-clear burst_start_location burst_stop_location
+if ~exist('waveform_dt', 'var')
+    waveform_dt = 1 / waveform_fs;
+end
 
-% perform some sanity checks
-fprintf('Waveform Length (s): %.3f\n', complex_waveform.dt * complex_waveform.sample_count);
-simulated_rms_power = 10 * log10(mean(...
-    complex_waveform.real(complex_waveform.burst_mask).^2 + ...
-    complex_waveform.imaginary(complex_waveform.burst_mask).^2)); 
-fprintf('Reported Pavg (dBFS): %.3f\n', -complex_waveform.papr)
-fprintf('Calculated Pavg (dBFS): %.3f\n', simulated_rms_power);
+waveform_length = waveform_dt * waveform_sample_count;
 
-% finish off with some additional traces
-power_trace = 10 * log10(complex_waveform.real.^2 + complex_waveform.imaginary.^2); 
-% time = 0:complex_waveform.dt:complex_waveform.dt*(complex_waveform.sample_count-1);
-% plot(time, power_trace);
-% xlabel('Time (s)');
-% ylabel('Power (dBFS)');
+% read waveform subset
+subset_start_sample = round(subset_offset * waveform_fs) + 1;
+if subset_length < 0
+    subset_stop_sample = waveform_sample_count;
+else
+    subset_stop_sample = subset_start_sample + ...
+        round(subset_length * waveform_fs) - 1;
+end
+tdms = TDMS_readTDMSFile(waveform_file_path, ...
+    'SUBSET_GET', ...
+    [subset_start_sample * 2 - 1, subset_stop_sample * 2], ...
+    'SUBSET_IS_LENGTH', false);
+interleaved_iq = tdms.data{3};
+clear tdms % free up some space
+
+% build burst mask
+waveform_burst_mask = false(1, waveform_sample_count);
+for i = 1:length(waveform_burst_start_locations)
+    waveform_burst_mask(waveform_burst_start_locations(i): ...
+        waveform_burst_stop_locations(i)) = true;
+end
+subset_burst_mask = waveform_burst_mask(subset_start_sample:subset_stop_sample);
+clear i waveform_burst_mask
+
+% compose subset waveform from interleaved iq
+subset_real = single(interleaved_iq(1:2:end));
+subset_imaginary = single(interleaved_iq(2:2:end));
+subset_y = subset_real + 1j * subset_imaginary;
+subset_sample_count = length(subset_real);
+subset_length = subset_sample_count * waveform_dt;
+clear interleaved_iq % free up some space
+
+% scale subset
+if scale_subset
+    subset_y = subset_y / max(subset_y);
+    subset_real = real(subset_y);
+    subset_imaginary = imag(subset_y);
+end
 
 % save the waveform to a .mat file
-clear i
-[~, file_name] = fileparts(complex_waveform.file_path);
-save(file_name)
+[~, file_name] = fileparts(waveform_file_path);
+disp('Saving waveform to .mat file. This could take a while.')
+% save(file_name, '-v7.3')
+
+% print some statistics
+fprintf('Waveform Length (s): %.3f\n', waveform_length);
+fprintf('Subset Length (s): %.3f\n', subset_length);
+if exist('waveform_papr', 'var')
+    simulated_rms_power = 10 * log10(mean(...
+        subset_real(subset_burst_mask).^2 + ...
+        subset_imaginary(subset_burst_mask).^2)); 
+    fprintf('Reported Waveform Pavg (dBFS): %.3f\n', -waveform_papr)
+    fprintf('Calculated Subset Pavg (dBFS): %.3f\n', simulated_rms_power);
+end
+
+% finish off with some additional traces
+power_trace = 10 * log10(subset_real.^2 + subset_imaginary.^2); 
+time = subset_offset:waveform_dt:subset_offset + waveform_dt * (subset_sample_count - 1);
+plot(time, power_trace);
+xlabel('Time (s)');
+ylabel('Power (dBFS)');
