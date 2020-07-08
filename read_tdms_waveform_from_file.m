@@ -1,11 +1,13 @@
-clear
+clear % clear residual variables in workspace
 
 % user variables
-waveform_file_path = 'C:\Users\semoore\Downloads\stream02.tdms';
+waveform_file_path = 'C:\Users\semoore\Downloads\stream03.tdms';
 subset_offset = 0; % offset from start of the waveform in seconds
-subset_length = -1; % length of waveform to load in seconds, -1 is all
+subset_length = -1; % length of waveform to load in seconds, -1 is rest
 default_iq_rate = 125e6; % sample rate to use if one isn't found in the tdms file
 scale_subset = true; % if true, scales the subset to have peak power of 0dB
+save_workspace = true; % if true, dumps the workspace to a .mat file
+plot_power_trace = false; % if true, calculates power trace of the subset and plots it vs time
 
 % scan and fill metadata
 tdms = TDMS_readTDMSFile(waveform_file_path, 'GET_DATA_OPTION', 'getnone');
@@ -42,7 +44,7 @@ for i = 1:length(channel_property_names)
             clear burst_locations j
     end
 end
-clear channel_property_names channel_property_values property_name property_value
+clear i channel_property_names channel_property_values property_name property_value
 
 % fill sample rate with default value if not found in metadata
 if ~exist('waveform_fs', 'var')
@@ -85,27 +87,38 @@ if scale_subset
     subset_y = subset_y / max(subset_y);
 end
 
-% save the waveform to a .mat file
-[~, file_name] = fileparts(waveform_file_path);
-disp('Saving workspace to .mat file. This could take a while.')
-save(file_name, '-v7.3')
+% save the workspace to a .mat file
+if save_workspace
+    [~, file_name] = fileparts(waveform_file_path);
+    disp('Saving workspace to .mat file. This could take a while.')
+    save(file_name, '-v7.3')
+end
+
+% build burst mask
+waveform_burst_mask = false(1, waveform_sample_count);
+for i = 1:length(waveform_burst_start_locations)
+    waveform_burst_mask(waveform_burst_start_locations(i): ...
+        waveform_burst_stop_locations(i)) = true;
+end
+subset_burst_mask = waveform_burst_mask(subset_start_sample:subset_stop_sample);
+clear i waveform_burst_mask
 
 % print some statistics
 fprintf('Waveform Length (s): %.3f\n', waveform_length);
 fprintf('Subset Length (s): %.3f\n', subset_length);
-subset_real = real(subset_y);
-subset_imaginary = imag(subset_y);
 if exist('waveform_papr', 'var')
     simulated_rms_power = 10 * log10(mean(...
-        subset_real(subset_burst_mask).^2 + ...
-        subset_imaginary(subset_burst_mask).^2)); 
+        real(subset_y(subset_burst_mask)).^2 + ...
+        imag(subset_y(subset_burst_mask)).^2)); 
     fprintf('Reported Waveform Pavg (dBFS): %.3f\n', -waveform_papr)
     fprintf('Calculated Subset Pavg (dBFS): %.3f\n', simulated_rms_power);
 end
 
 % finish off with some additional traces
-power_trace = 10 * log10(subset_real.^2 + subset_imaginary.^2); 
-time = subset_offset:waveform_dt:subset_offset + waveform_dt * (subset_sample_count - 1);
-plot(time, power_trace);
-xlabel('Time (s)');
-ylabel('Power (dBFS)');
+if plot_power_trace
+    power_trace = 10 * log10(real(subset_y).^2 + imag(subset_y).^2);
+    time = subset_offset:waveform_dt:subset_offset + waveform_dt * (subset_sample_count - 1);
+    plot(time, power_trace);
+    xlabel('Time (s)');
+    ylabel('Power (dBFS)');
+end
