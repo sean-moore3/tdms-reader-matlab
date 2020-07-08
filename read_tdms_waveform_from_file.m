@@ -2,7 +2,6 @@ clear
 
 % user variables
 waveform_file_path = 'C:\Users\semoore\Downloads\stream02.tdms';
-% waveform_file_path = 'C:\Users\semoore\Downloads\stream03.tdms';
 subset_offset = 0; % offset from start of the waveform in seconds
 subset_length = -1; % length of waveform to load in seconds, -1 is all
 default_iq_rate = 125e6; % sample rate to use if one isn't found in the tdms file
@@ -100,7 +99,7 @@ end
 
 % save the waveform to a .mat file
 [~, file_name] = fileparts(waveform_file_path);
-disp('Saving waveform to .mat file. This could take a while.')
+disp('Saving workspace to .mat file. This could take a while.')
 save(file_name, '-v7.3')
 
 % print some statistics
