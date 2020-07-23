@@ -1,7 +1,7 @@
 clear % clear residual variables in workspace
 
 % user variables
-waveform_file_path = 'C:\Users\semoore\Downloads\stream03.tdms';
+waveform_file_path = 'C:\Users\semoore\Downloads\stream.tdms';
 subset_offset = 0; % offset from start of the waveform in seconds
 subset_length = -1; % length of waveform to load in seconds, -1 is rest
 default_iq_rate = 125e6; % sample rate to use if one isn't found in the tdms file
@@ -58,6 +58,7 @@ end
 if ~exist('waveform_dt', 'var')
     waveform_dt = 1 / waveform_fs;
 end
+clear default_iq_rate
 
 waveform_length = waveform_dt * waveform_sample_count;
 
@@ -85,7 +86,7 @@ clear interleaved_iq % free up some space
 
 % scale waveform with gain value if present
 if exist('waveform_gain', 'var')
-    subset_y = subset_y * gain;
+    subset_y = subset_y * waveform_gain;
 end
 clear waveform_gain
 
@@ -122,5 +123,5 @@ if plot_power_trace
     time = subset_offset:waveform_dt:subset_offset + waveform_dt * (subset_sample_count - 1);
     plot(time, power_trace);
     xlabel('Time (s)');
-    ylabel('Power (dBFS)');
+    ylabel('Power');
 end
