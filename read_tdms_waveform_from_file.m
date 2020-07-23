@@ -5,7 +5,6 @@ waveform_file_path = 'C:\Users\semoore\Downloads\stream03.tdms';
 subset_offset = 0; % offset from start of the waveform in seconds
 subset_length = -1; % length of waveform to load in seconds, -1 is rest
 default_iq_rate = 125e6; % sample rate to use if one isn't found in the tdms file
-scale_subset = true; % if true, scales the subset to have peak power of 0dB
 save_workspace = true; % if true, dumps the workspace to a .mat file
 plot_power_trace = false; % if true, calculates power trace of the subset and plots it vs time
 
@@ -24,7 +23,7 @@ for i = 1:length(channel_property_names)
             waveform_t0 = property_value;
         case 'dt'
             waveform_dt = property_value;
-        case 'NI_RF_IQRate'
+        case {'NI_RF_IQRate', 'niRF_iqRate'}
             waveform_fs = property_value;
         case 'NI_RF_PAPR'
             waveform_papr = property_value;
@@ -42,6 +41,8 @@ for i = 1:length(channel_property_names)
                 eval([property_name, '(j) = ', burst_locations{j}, ' + 1;']); % matlab indexes start at 1
             end
             clear burst_locations j
+        case 'niRF_gain'
+            waveform_gain = property_value;
     end
 end
 clear i channel_property_names channel_property_values property_name property_value
@@ -82,10 +83,11 @@ subset_sample_count = length(subset_y);
 subset_length = subset_sample_count * waveform_dt;
 clear interleaved_iq % free up some space
 
-% scale subset
-if scale_subset
-    subset_y = subset_y / max(subset_y);
+% scale waveform with gain value if present
+if exist('waveform_gain', 'var')
+    subset_y = subset_y * gain;
 end
+clear waveform_gain
 
 % save the workspace to a .mat file
 if save_workspace
