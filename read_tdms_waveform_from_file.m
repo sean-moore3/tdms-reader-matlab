@@ -43,6 +43,8 @@ for i = 1:length(channel_property_names)
             clear burst_locations j
         case 'niRF_gain'
             waveform_gain = property_value;
+        case 'niRF_referenceLevel'
+            analyzer_reference_level = property_value;
     end
 end
 clear i channel_property_names channel_property_values property_name property_value
@@ -85,7 +87,7 @@ clear interleaved_iq % free up some space
 
 % scale waveform with gain value if present
 if exist('waveform_gain', 'var')
-    subset_y = subset_y * gain;
+    subset_y = subset_y * waveform_gain;
 end
 clear waveform_gain
 
